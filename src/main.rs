@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -104,24 +105,82 @@ fn get_files<P: AsRef<Path>>(dir: P, filenames: &mut Vec<PathBuf>) -> io::Result
     Ok(())
 }
 
+pub struct ProjectData {
+    pub lines_per_language: Vec<(String, usize)>,
+    total_lines: usize,
+    name: String,
+    percentage_per_language: Vec<(f64, usize)>,
+}
+
+impl ProjectData {
+    /// Creates a new projett data with a especified name
+    pub fn new(name: &str) -> Self {
+        ProjectData {
+            lines_per_language: Vec::with_capacity(4096), // Arbitrary number
+            total_lines: 0,
+            name: name.to_owned(),
+            percentage_per_language: Vec::with_capacity(4096),
+        }
+    }
+
+    /// Push the data obtained to the project data, designed to be threaded
+    pub fn push(&mut self, lang_name: &str, lines: usize) -> Option<()> {
+        // If the lang is already contained update it if not push it
+        if self
+            .lines_per_language
+            .iter()
+            .any(|(lang, _)| lang_name == lang)
+        {
+            let (_, l) = self
+                .lines_per_language
+                .iter_mut()
+                .find(|(lang, _)| lang_name == lang)?; // Not failable because checked before
+            *l += lines;
+        } else {
+            self.lines_per_language.push((lang_name.to_owned(), lines));
+        }
+
+        Some(())
+    }
+
+    /// Compile with the collected data the results
+    pub fn collapse(&mut self) {
+        self.total_lines = self
+            .lines_per_language
+            .iter()
+            .fold(0, |acc, lines| acc + lines.1);
+    }
+}
+
+/// Print the project data with the objective to put in into the screen
+impl fmt::Debug for ProjectData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "PROJECT_NAME: {:<30}TOTAL_LINES: {}",
+            self.name, self.total_lines,
+        )
+    }
+}
+
 fn main() {
     // Get the dir from args
     let path = std::env::args().nth(1).expect("Usage: rlcount <path>");
     let mut filenames = Vec::new();
     get_files(path, &mut filenames).expect("Error getting filenames");
-    let mut total_count = 0;
+    let mut project_data = ProjectData::new("test");
     for file in filenames.iter() {
-        total_count += match parse_file(file) {
-            Some(n) => {
-                println!("Parsing lines of: {:?}, which yields: {}", file, n);
-                n
-            }
-            None => {
-                println!("Uknown extension: {:?}", file.extension());
-                0
-            }
-        };
+        project_data.push(
+            file.extension().unwrap().to_str().unwrap(),
+            match parse_file(file) {
+                Some(n) => {
+                    println!("Parsing lines of: {:?}, which yields: {}", file, n);
+                    n
+                }
+                None => 0,
+            },
+        );
     }
-
-    println!("Total count: {}", total_count);
+    project_data.collapse();
+    println!("{:?}", project_data);
 }
