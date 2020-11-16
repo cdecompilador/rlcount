@@ -4,6 +4,7 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
+/// TODO: Add more languages like go, html, js, python
 const KNOWN_EXTENSIONS_BINDINGS: &[(&str, &[&str])] = &[
     ("rs", &["//", "/*", "*/"]),
     ("c", &["//", "/*", "*/"]),
@@ -20,7 +21,7 @@ pub enum Line {
 }
 
 /// Given a `filepath` it will parse it and return the line count keeping in mind
-/// that can have comments
+/// that can have comments. Its not perfect and it does not aim to be, just fast
 fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
     let ext = filepath.as_ref().extension()?;
     let mut single_line_match = None;
@@ -33,19 +34,9 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
             close_multiline_match = Some(e.1[2]);
         }
     }
-    // FIXME: There must be a better way to do this
-    let single_line_match = match single_line_match {
-        Some(s) => s,
-        None => return None,
-    };
-    let open_multiline_match = match open_multiline_match {
-        Some(s) => s,
-        None => return None,
-    };
-    let close_multiline_match = match close_multiline_match {
-        Some(s) => s,
-        None => return None,
-    };
+    let single_line_match = single_line_match?;
+    let open_multiline_match = open_multiline_match?;
+    let close_multiline_match = close_multiline_match?;
     // TODO: Best error reporting
     // Read the file given the `filepath`
     let file = fs::read_to_string(filepath).expect("Error opening file");
@@ -105,8 +96,11 @@ fn get_files<P: AsRef<Path>>(dir: P, filenames: &mut Vec<PathBuf>) -> io::Result
     Ok(())
 }
 
+/// The representation of the data that will be yielded to the user by Debug trait,
+/// designed with threading in mind. It should be contained into an Arc and changes from multriple
+/// threads will push info via the `push` function
 pub struct ProjectData {
-    pub lines_per_language: Vec<(String, usize)>,
+    lines_per_language: Vec<(String, usize)>,
     total_lines: usize,
     name: String,
     percentage_per_language: Vec<(f64, usize)>,
@@ -116,16 +110,19 @@ impl ProjectData {
     /// Creates a new projett data with a especified name
     pub fn new(name: &str) -> Self {
         ProjectData {
-            lines_per_language: Vec::with_capacity(4096), // Arbitrary number
+            // Ej: [("c", 129), ("rs", 48)]
+            lines_per_language: Vec::with_capacity(8), // Arbitrary number
+            // To be calculate when collapse is called
             total_lines: 0,
             name: name.to_owned(),
-            percentage_per_language: Vec::with_capacity(4096),
+            // TODO: To be calculate when collapse is called
+            percentage_per_language: Vec::with_capacity(8),
         }
     }
 
     /// Push the data obtained to the project data, designed to be threaded
     pub fn push(&mut self, lang_name: &str, lines: usize) -> Option<()> {
-        // If the lang is already contained update it if not push it
+        // If the lang is already contained update it if not push the new one
         if self
             .lines_per_language
             .iter()
@@ -148,7 +145,7 @@ impl ProjectData {
         self.total_lines = self
             .lines_per_language
             .iter()
-            .fold(0, |acc, lines| acc + lines.1);
+            .fold(0, |acc, lines| acc + lines.1); // Fold it like an epic haskeller
     }
 }
 
@@ -166,9 +163,15 @@ impl fmt::Debug for ProjectData {
 fn main() {
     // Get the dir from args
     let path = std::env::args().nth(1).expect("Usage: rlcount <path>");
+
+    // Get all the filenames from the path
     let mut filenames = Vec::new();
     get_files(path, &mut filenames).expect("Error getting filenames");
+
+    // Create the project_data
     let mut project_data = ProjectData::new("test");
+
+    // Process each file in the project
     for file in filenames.iter() {
         project_data.push(
             file.extension().unwrap().to_str().unwrap(),
@@ -181,6 +184,8 @@ fn main() {
             },
         );
     }
+
+    // Collapse the results and show them
     project_data.collapse();
     println!("{:?}", project_data);
 }
