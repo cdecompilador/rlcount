@@ -4,6 +4,15 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
+/// Return the language name given the `extension`
+fn get_language_name<'a>(extension: &'a str) -> &'a str {
+    match extension {
+        "rs" => "Rust",
+        "c" => "C",
+        "c++" => "C++",
+        _ => "Uknown", // TODO: Add more
+    }
+}
 /// TODO: Add more languages like go, html, js, python
 const KNOWN_EXTENSIONS_BINDINGS: &[(&str, &[&str])] = &[
     ("rs", &["//", "/*", "*/"]),
@@ -24,6 +33,9 @@ pub enum Line {
 /// that can have comments. Its not perfect and it does not aim to be, just fast
 fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
     let ext = filepath.as_ref().extension()?;
+    if !KNOWN_EXTENSIONS_BINDINGS.iter().any(|x| x.0 == ext) {
+        return None;
+    }
     let mut single_line_match = None;
     let mut open_multiline_match = None;
     let mut close_multiline_match = None;
@@ -83,7 +95,7 @@ fn get_files<P: AsRef<Path>>(dir: P, filenames: &mut Vec<PathBuf>) -> io::Result
     let entries = fs::read_dir(dir)?;
 
     for entry in entries {
-        // If a entry is a file add it and if is not recursive call to this func
+        // If a entry is a file add it to the entries and if is not, recursive call to this func
         let entry = entry?;
         if entry.file_type()?.is_file() {
             filenames.push(entry.path());
@@ -103,7 +115,7 @@ pub struct ProjectData {
     lines_per_language: Vec<(String, usize)>,
     total_lines: usize,
     name: String,
-    percentage_per_language: Vec<(f64, usize)>,
+    percentage_per_language: Vec<(String, f64)>,
 }
 
 impl ProjectData {
@@ -146,16 +158,40 @@ impl ProjectData {
             .lines_per_language
             .iter()
             .fold(0, |acc, lines| acc + lines.1); // Fold it like an epic haskeller
+
+        // Calculate the percentage of the total code of each language
+        for (lang, lines) in &self.lines_per_language {
+            let percentage = *lines as f64 / self.total_lines as f64 * 100.0;
+            self.percentage_per_language
+                .push((lang.clone(), percentage));
+        }
     }
 }
 
 /// Print the project data with the objective to put in into the screen
 impl fmt::Debug for ProjectData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /*
+            Ex:
+            PROJECT_NAME: test          TOTAL_LINES: 186
+
+               RUST  : 97.85 %
+               C     : 2.15  %
+        */
+        // Render into a string the percentages
+        let mut percentages = String::from("\n");
+        for (lang, perc) in &self.percentage_per_language {
+            percentages.push_str(&format!(
+                "    {:<10}: {:>6.2} %\n",
+                get_language_name(&lang),
+                perc
+            ));
+        }
+
         write!(
             f,
-            "PROJECT_NAME: {:<30}TOTAL_LINES: {}",
-            self.name, self.total_lines,
+            "PROJECT_NAME: {:<30}TOTAL_LINES: {}\n{}",
+            self.name, self.total_lines, percentages
         )
     }
 }
@@ -173,16 +209,10 @@ fn main() {
 
     // Process each file in the project
     for file in filenames.iter() {
-        project_data.push(
-            file.extension().unwrap().to_str().unwrap(),
-            match parse_file(file) {
-                Some(n) => {
-                    println!("Parsing lines of: {:?}, which yields: {}", file, n);
-                    n
-                }
-                None => 0,
-            },
-        );
+        let extension = file.extension().unwrap().to_str().unwrap();
+        if let Some(n) = parse_file(file) {
+            project_data.push(extension, n);
+        }
     }
 
     // Collapse the results and show them
