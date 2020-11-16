@@ -33,19 +33,10 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
             close_multiline_match = Some(e.1[2]);
         }
     }
-    // FIXME: There must be a better way to do this
-    let single_line_match = match single_line_match {
-        Some(s) => s,
-        None => return None,
-    };
-    let open_multiline_match = match open_multiline_match {
-        Some(s) => s,
-        None => return None,
-    };
-    let close_multiline_match = match close_multiline_match {
-        Some(s) => s,
-        None => return None,
-    };
+    // Equivalent of doing match unwrap value
+    let single_line_match = single_line_match?;
+    let open_multiline_match = open_multiline_match?;
+    let close_multiline_match = close_multiline_match?;
     // TODO: Best error reporting
     // Read the file given the `filepath`
     let file = fs::read_to_string(filepath).expect("Error opening file");
