@@ -2,12 +2,12 @@
 <h1 align="center">A tool to get info about project lines of code</h>
 <br><br>
 
-# Example: Getting lines of code of project
+# Example: Getting project lines of code
 
 1. Clone the repo <br>
 `git clone https://github.com/ElGusanitoPLAY/rlcount`
 2. Install it <br>
-`cargo install --path` (Into project dir)
+`cargo install --path .` (Into project dir)
 3. Test it in some project! <br>
 `rlcount .`
 
