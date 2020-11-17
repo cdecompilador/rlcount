@@ -51,7 +51,10 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
     let close_multiline_match = close_multiline_match?;
     // TODO: Best error reporting
     // Read the file given the `filepath`
-    let file = fs::read_to_string(filepath).expect("Error opening file");
+    let file = match fs::read_to_string(filepath) {
+        Ok(f) => f,
+        Err(_) => return None,
+    };
     let mut p_lines: Vec<Line> = Vec::with_capacity(file.len());
     // Iterate the lines and push the type of each one
     for l in file.lines() {
@@ -99,8 +102,10 @@ fn get_files<P: AsRef<Path>>(dir: P, filenames: &mut Vec<PathBuf>) -> io::Result
         let entry = entry?;
         if entry.file_type()?.is_file() {
             filenames.push(entry.path());
-        } else {
+        } else  if entry.file_type()?.is_dir() {
             get_files(entry.path(), filenames)?;
+        } else {
+            // TODO: Symlink encountered, don't know how to manage it
         }
     }
     // Filter non extensioned files
@@ -175,15 +180,16 @@ impl fmt::Debug for ProjectData {
             Ex:
             PROJECT_NAME: test          TOTAL_LINES: 186
 
-               RUST  : 97.85 %
-               C     : 2.15  %
+               RUST  => Lines: y      97.85 %
+               C     => Lines: x      2.15  %
         */
         // Render into a string the percentages
         let mut percentages = String::from("\n");
         for (lang, perc) in &self.percentage_per_language {
             percentages.push_str(&format!(
-                "    {:<10}: {:>6.2} %\n",
+                "    {:<7}=> Lines: {:<7?} {:>6.2} %\n",
                 get_language_name(&lang),
+                self.lines_per_language.iter().find(|s| lang == &s.0).unwrap().1,
                 perc
             ));
         }
@@ -198,14 +204,14 @@ impl fmt::Debug for ProjectData {
 
 fn main() {
     // Get the dir from args
-    let path = std::env::args().nth(1).expect("Usage: rlcount <path>");
+    let path = &std::env::args().nth(1).expect("Usage: rlcount <path>");
 
     // Get all the filenames from the path
     let mut filenames = Vec::new();
     get_files(path, &mut filenames).expect("Error getting filenames");
 
-    // Create the project_data
-    let mut project_data = ProjectData::new("test");
+    // Create the project_data with the name of the folder
+    let mut project_data = ProjectData::new("...");
 
     // Process each file in the project
     for file in filenames.iter() {
