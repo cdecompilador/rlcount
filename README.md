@@ -5,11 +5,14 @@
 # Example: Getting project lines of code
 
 1. Clone the repo <br>
-`git clone https://github.com/ElGusanitoPLAY/rlcount`
-2. Install it <br>
-`cargo install --path .` (Into project dir)
+```bash
+git clone https://github.com/ElGusanitoPLAY/rlcount```
+2. Install it (Into project dir) <br>
+```bash
+cargo install --path .``` 
 3. Test it in some project! <br>
-`rlcount .`
+```bash
+rlcount .```
 
 ```
 PROJECT_NAME: ...                           TOTAL_LINES: 70
