@@ -3,6 +3,11 @@ name = "rlcount"
 version = "0.1.0"
 authors = ["ElGusanitoPLAY <nyagouno@gmail.com>"]
 edition = "2018"
+description = "A tool to get info about project lines of code"
+readme = "README.md"
+keywords = ["lines", "count", "repository", "git"]
+license-file = "LICENSE"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
