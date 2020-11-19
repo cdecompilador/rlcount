@@ -9,15 +9,25 @@ fn get_language_name<'a>(extension: &'a str) -> &'a str {
     match extension {
         "rs" => "Rust",
         "c" => "C",
-        "c++" => "C++",
-        _ => "Uknown", // TODO: Add more
+        "cpp" | "cxx" | "c++" => "C++",
+        "py" => "Python",
+        "js" | "jsx" => "Javascript",
+        "ts" => "Typescript",
+        _ => {
+            println!("Uknown file extension: {}", extension);
+            "Uknown"
+        },
+         // TODO: Add more
     }
 }
-/// TODO: Add more languages like go, html, js, python
+/// TODO: Add more languages
 const KNOWN_EXTENSIONS_BINDINGS: &[(&str, &[&str])] = &[
     ("rs", &["//", "/*", "*/"]),
     ("c", &["//", "/*", "*/"]),
-    ("cpp", &["//", "/*", "*/"]),
+    ("cpp", &["//", "/*", "*/"]),("c++", &["//", "/*", "*/"]),("cxx", &["//", "/*", "*/"]),
+    ("py", &["#", "\"\"\"", "\"\"\""]),
+    ("js", &["//", "/*", "*/"]),("jsx", &["//", "/*", "*/"]),
+    ("ts", &["//", "/*", "*/"]),
 ];
 
 /// Representation of a Line
@@ -63,7 +73,7 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
             p_lines.push(Line::SingleComment);
         } else if l.starts_with(open_multiline_match) {
             p_lines.push(Line::OpenMultiComment);
-        } else if l.starts_with(close_multiline_match) || l.ends_with(close_multiline_match) {
+        } else if l.contains(close_multiline_match) { // To avoid line count loss
             p_lines.push(Line::CloseMultiComment);
         } else {
             p_lines.push(Line::Normal);
@@ -78,7 +88,12 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
                 in_multi = true;
             }
             Line::CloseMultiComment => {
-                in_multi = false;
+                if in_multi {
+                    in_multi = false;
+                } else {
+                    // Case of a close comment fount but no open
+                    line_count += 1; 
+                }
             }
             Line::SingleComment => {}
             Line::Normal => {
@@ -210,7 +225,7 @@ fn main() {
     let mut filenames = Vec::new();
     get_files(path, &mut filenames).expect("Error getting filenames");
 
-    // Create the project_data with the name of the folder
+    // TODO: Create the project_data with the name of the folder
     let mut project_data = ProjectData::new("...");
 
     // Process each file in the project
