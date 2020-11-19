@@ -6,13 +6,16 @@
 
 1. Clone the repo <br>
 ```bash
-git clone https://github.com/ElGusanitoPLAY/rlcount```
+git clone https://github.com/ElGusanitoPLAY/rlcount
+```
 2. Install it (Into project dir) <br>
 ```bash
-cargo install --path .``` 
+cargo install --path .
+``` 
 3. Test it in some project! <br>
 ```bash
-rlcount .```
+rlcount .
+```
 
 ```
 PROJECT_NAME: ...                           TOTAL_LINES: 70
