@@ -3,7 +3,10 @@ name = "rlcount"
 version = "0.1.1"
 authors = ["ElGusanitoPLAY <nyagouno@gmail.com>"]
 edition = "2018"
-description = "A tool to get info about project lines of code"
+
+description = "A tool to get info about project lines of code"a
+repository = "https://github.com/cdecompilador/rlcount.git"
+
 readme = "README.md"
 keywords = ["lines", "count", "repository", "git"]
 license-file = "LICENSE"
