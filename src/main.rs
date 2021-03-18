@@ -4,29 +4,38 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
+use walkdir::WalkDir;
+
 /// Return the language name given the `extension`
+/// TODO: Add support for more languages
 fn get_language_name<'a>(extension: &'a str) -> &'a str {
     match extension {
         "rs" => "Rust",
         "c" => "C",
         "cpp" | "cxx" | "c++" => "C++",
         "py" => "Python",
-        "js" | "jsx" => "Javascript",
-        "ts" => "Typescript",
+        "js" | "jsx" | "ejs" => "Javascript",
+        "ts" | ".d.ts" => "Typescript",
+        "html" => "HTML",
+        "css" => "css",
         _ => {
             println!("Uknown file extension: {}", extension);
             "Uknown"
-        },
-         // TODO: Add more
+        }
     }
 }
+
+/// Used to know the kind of comments used in the especified language
 /// TODO: Add more languages
 const KNOWN_EXTENSIONS_BINDINGS: &[(&str, &[&str])] = &[
     ("rs", &["//", "/*", "*/"]),
     ("c", &["//", "/*", "*/"]),
-    ("cpp", &["//", "/*", "*/"]),("c++", &["//", "/*", "*/"]),("cxx", &["//", "/*", "*/"]),
+    ("cpp", &["//", "/*", "*/"]),
+    ("c++", &["//", "/*", "*/"]),
+    ("cxx", &["//", "/*", "*/"]),
     ("py", &["#", "\"\"\"", "\"\"\""]),
-    ("js", &["//", "/*", "*/"]),("jsx", &["//", "/*", "*/"]),
+    ("js", &["//", "/*", "*/"]),
+    ("jsx", &["//", "/*", "*/"]),
     ("ts", &["//", "/*", "*/"]),
 ];
 
@@ -39,8 +48,9 @@ pub enum Line {
     Normal,
 }
 
-/// Given a `filepath` it will parse it and return the line count keeping in mind
-/// that can have comments. Its not perfect and it does not aim to be, just fast
+/// Given a `filepath` it will parse it and return the line count keeping in
+/// mind that can have comments. Its not perfect and it does not aim to be,
+/// just fast
 fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
     let ext = filepath.as_ref().extension()?;
     if !KNOWN_EXTENSIONS_BINDINGS.iter().any(|x| x.0 == ext) {
@@ -59,7 +69,7 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
     let single_line_match = single_line_match?;
     let open_multiline_match = open_multiline_match?;
     let close_multiline_match = close_multiline_match?;
-    // TODO: Best error reporting
+    // TODO: Better error reporting
     // Read the file given the `filepath`
     let file = match fs::read_to_string(filepath) {
         Ok(f) => f,
@@ -73,7 +83,8 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
             p_lines.push(Line::SingleComment);
         } else if l.starts_with(open_multiline_match) {
             p_lines.push(Line::OpenMultiComment);
-        } else if l.contains(close_multiline_match) { // To avoid line count loss
+        } else if l.contains(close_multiline_match) {
+            // To avoid line count loss
             p_lines.push(Line::CloseMultiComment);
         } else {
             p_lines.push(Line::Normal);
@@ -92,7 +103,7 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
                     in_multi = false;
                 } else {
                     // Case of a close comment fount but no open
-                    line_count += 1; 
+                    line_count += 1;
                 }
             }
             Line::SingleComment => {}
@@ -106,18 +117,24 @@ fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
     Some(line_count)
 }
 
-/// Function that given a `dir` fills the vec `filenames` with a recursive search
-/// in the project of extensioned files
-fn get_files<P: AsRef<Path>>(dir: P, filenames: &mut Vec<PathBuf>) -> io::Result<()> {
+/// Function that given a `dir` fills the vec `filenames` with a recursive
+/// search in the project of extensioned files. Maybe not using recursion
+/// could be a good option
+fn get_files<P: AsRef<Path>>(
+    dir: P,
+    filenames: &mut Vec<PathBuf>,
+) -> io::Result<()> {
+    /*
     // Get the entries in dir
     let entries = fs::read_dir(dir)?;
 
     for entry in entries {
-        // If a entry is a file add it to the entries and if is not, recursive call to this func
+        // If a entry is a file add it to the entries and if is not, recursive
+        // call to this func
         let entry = entry?;
         if entry.file_type()?.is_file() {
             filenames.push(entry.path());
-        } else  if entry.file_type()?.is_dir() {
+        } else if entry.file_type()?.is_dir() {
             get_files(entry.path(), filenames)?;
         } else {
             // TODO: Symlink encountered, don't know how to manage it
@@ -126,11 +143,16 @@ fn get_files<P: AsRef<Path>>(dir: P, filenames: &mut Vec<PathBuf>) -> io::Result
     // Filter non extensioned files
     filenames.retain(|f| f.extension().is_some());
     Ok(())
+    */
+    for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
+        filenames.push(entry.path().to_path_buf());
+    }
+    Ok(())
 }
 
-/// The representation of the data that will be yielded to the user by Debug trait,
-/// designed with threading in mind. It should be contained into an Arc and changes from multriple
-/// threads will push info via the `push` function
+/// The representation of the data that will be yielded to the user by Debug
+/// trait, designed with threading in mind. It should be contained into an Arc
+/// and changes from multriple threads will push info via the `push` function
 pub struct ProjectData {
     lines_per_language: Vec<(String, usize)>,
     total_lines: usize,
@@ -202,9 +224,13 @@ impl fmt::Debug for ProjectData {
         let mut percentages = String::from("\n");
         for (lang, perc) in &self.percentage_per_language {
             percentages.push_str(&format!(
-                "    {:<7}=> Lines: {:<7?} {:>6.2} %\n",
+                "    {:<14}=> Lines: {:<14?} {:>6.2} %\n",
                 get_language_name(&lang),
-                self.lines_per_language.iter().find(|s| lang == &s.0).unwrap().1,
+                self.lines_per_language
+                    .iter()
+                    .find(|s| lang == &s.0)
+                    .unwrap()
+                    .1,
                 perc
             ));
         }
@@ -229,9 +255,12 @@ fn main() {
     let mut project_data = ProjectData::new("...");
 
     // Process each file in the project
-    for file in filenames.iter() {
-        let extension = file.extension().unwrap().to_str().unwrap();
-        if let Some(n) = parse_file(file) {
+    for filename in filenames.iter() {
+        let extension: &str = match filename.extension() {
+            Some(extension) => extension.to_str().unwrap(),
+            None => continue,
+        };
+        if let Some(n) = parse_file(filename) {
             project_data.push(extension, n);
         }
     }
