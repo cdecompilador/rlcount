@@ -27,5 +27,15 @@ PROJECT_NAME: ...                           TOTAL_LINES: 70
 
 Just because I wanted some tool to do this before reading a codebase
 
+# Supported languages
+* C
+* C++
+* Rust
+* Python
+* Javascript (frameworks also)
+* Typescript
+* Java
+* Golang
+
 # Contrib Guidelines
 Not to much just comment everything you do

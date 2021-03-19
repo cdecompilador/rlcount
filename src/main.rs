@@ -1,12 +1,11 @@
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
 use walkdir::WalkDir;
 use rayon::prelude::*;
-use clap::{Arg, App, SubCommand};
+use clap::{Arg, App};
 
 mod parser;
 use parser::parse_file;
@@ -20,9 +19,11 @@ fn get_language_name<'a>(extension: &'a str) -> &'a str {
         "cpp" | "cxx" | "c++" => "C++",
         "py" => "Python",
         "js" | "jsx" | "ejs" => "Javascript",
-        "ts" | ".d.ts" => "Typescript",
-        "html" => "HTML",
-        "css" => "css",
+        "ts"  => "Typescript",
+        "html" => "HTML", // Not yet
+        "css" => "css", // Not yet
+        "java" => "Java",
+        "go" => "Golang",
         _ => "Unknown"
     }
 }
@@ -150,12 +151,14 @@ fn main() {
     // TODO: Create the project_data with the name of the folder
     let mut project_data = ProjectData::new("");
 
-    // Process each file in the project
-    let a = filenames.par_iter()
+    // Process each file in the project, rayon is being used for the sake of 
+    // speed
+    filenames.par_iter()
         .map(|filename| {
         let extension: &str = match filename.extension() {
             Some(extension) => {
                 let ext: &str = extension.to_str().unwrap();
+                // If not supported the extension do nothing with it
                 if get_language_name(ext) == "Unknown" {
                     return None;
                 } 

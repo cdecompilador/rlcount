@@ -1,56 +1,69 @@
 use std::path::Path;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 
 use regex::Regex;
+use lazy_static::{lazy_static, __Deref};
 
-/// Used to know the kind of comments used in the especified language
-/// TODO: Add more languages
-const KNOWN_EXTENSIONS_BINDINGS: &[(&str, &[&str])] = &[
-    ("rs", &["//", "/*", "*/"]),
-    ("c", &["//", "/*", "*/"]),
-    ("cpp", &["//", "/*", "*/"]),
-    ("c++", &["//", "/*", "*/"]),
-    ("cxx", &["//", "/*", "*/"]),
-    ("py", &["#", "\"\"\"", "\"\"\""]),
-    ("js", &["//", "/*", "*/"]),
-    ("jsx", &["//", "/*", "*/"]),
-    ("ts", &["//", "/*", "*/"]),
-];
-
-fn linearizator(extension: &str) -> Option<impl Linearizator> {
+fn linearizator(extension: &str) -> Option<Box<dyn Linearizator>> {
     match extension {
-        "rs" | "c" | "cpp" | "cxx" | "js" | "ts" | "jsx" | "ejs"
-            => Some(DefaultLinearizator {}),
+        "rs" | "c" | "cpp" | "cxx" | "js" | "ts" | "jsx" | "ejs" 
+        | "java" | "go"
+            => Some(Box::new(DefaultLinearizator {})),
+        "py" | "pyc" 
+            => Some(Box::new(PythonLinearizator {})),
         _ => None
     }
 }
 
+/// Abstract trait for all the future implementations of a Linearizator 
+/// (needed better name I know). It counts the lines of a file following this
+/// rule: `lines` = `total_lines` - `lines_commented`
 trait Linearizator {
-    fn count_lines(self, input: &String) -> usize where Self: Sized {
+    fn count_lines(&self, input: String) -> usize {
         // Substracts the total lines of code inside the file and the lines of
         // all the comments
         input.lines().count() 
             - self.get_comments()
-                .find_iter(input)
+                .find_iter(input.as_str())
                 .map(|s| s.as_str().lines().count()).sum::<usize>()
     }
-
-    fn get_comments(self) -> Regex where Self: Sized;
+    
+    /// Get a Regex for the specific `Linearizator` implementation that matches
+    /// all kinds of comments
+    fn get_comments(&self) -> Regex;
 }
 
 struct DefaultLinearizator {}
 impl Linearizator for DefaultLinearizator {
-    fn get_comments(self) -> Regex where Self: Sized {
-        Regex::new(r"(/\*[\w\s\n]*\*/)|(/+[\s\w]*)").unwrap()
+    fn get_comments(&self) -> Regex {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"(/\*[\w\s\n]*\*/)|(/+[\s\w]*)")
+                .unwrap();
+        }
+        RE.deref().clone()
     }
 }
 
-fn lines_of_code(input: &String, extension: &str) -> usize {
+struct PythonLinearizator {}
+impl Linearizator for PythonLinearizator {
+    fn get_comments(&self) -> Regex {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r#"(#+[\s\w]*)|("""[\w\s\n]*""")"#)
+                .unwrap();
+        }
+        RE.deref().clone()
+    }
+}
+
+/// Given an `input` and an `extension` (to match the kind of file to parse),
+/// it returns the lines of code of that file, if not capable of parsing it
+/// (not implemneted a parser yet) it counts 0
+fn lines_of_code(input: String, extension: &str) -> usize {
     if let Some(ltor) = linearizator(extension) {
         return ltor.count_lines(input);
     } else {
-        println!("Unimplemented extension {}", extension);
+        // println!("Unimplemented extension {}", extension);
         return 0;
     }
 }
@@ -67,7 +80,7 @@ pub fn parse_file(filepath: impl AsRef<Path>) -> Option<usize> {
         if 0 < file.read_to_string(&mut file_content).ok()? {
             return Some(
                 lines_of_code(
-                    &file_content,
+                    file_content,
                     filepath.extension()?.to_str()?
                 )
             );
@@ -79,12 +92,26 @@ pub fn parse_file(filepath: impl AsRef<Path>) -> Option<usize> {
 }
 
 #[cfg(test)]
-mod tests {
+mod parser {
     use super::*;
     #[test]
-    fn rust_tests() {
+    fn default_test() {
         assert_eq!(
             lines_of_code(&"// aaa\n// aaa\n// aaa\n/*\naaa\naaa\naaa\n*/\nHi".to_string(),"rs"),
+            1
+        );
+    }
+
+    #[test]
+    fn python_test() {
+        assert_eq!(
+            lines_of_code(
+&r#"# Hello
+"""" 
+Multiline
+Comment
+""""
+print("Hello")"#.to_string(), "py"),
             1
         );
     }
