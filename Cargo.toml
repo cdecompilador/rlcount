@@ -11,13 +11,15 @@ readme = "README.md"
 keywords = ["lines", "count", "repository", "git"]
 license-file = "LICENSE"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
 name = "rlcount"
 path = "src/main.rs"
-test = false
+test = true
 doc = false
 
 [dependencies]
-walkdir = "*"
+rayon = "1.5.0"
+clap = "2.33.3"
+walkdir = "2.3.1"
+regex = "1.4.5"
+lazy_static = "1.4.0"

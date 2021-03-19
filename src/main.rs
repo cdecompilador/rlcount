@@ -5,6 +5,11 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use walkdir::WalkDir;
+use rayon::prelude::*;
+use clap::{Arg, App, SubCommand};
+
+mod parser;
+use parser::parse_file;
 
 /// Return the language name given the `extension`
 /// TODO: Add support for more languages
@@ -18,103 +23,8 @@ fn get_language_name<'a>(extension: &'a str) -> &'a str {
         "ts" | ".d.ts" => "Typescript",
         "html" => "HTML",
         "css" => "css",
-        _ => {
-            println!("Uknown file extension: {}", extension);
-            "Uknown"
-        }
+        _ => "Unknown"
     }
-}
-
-/// Used to know the kind of comments used in the especified language
-/// TODO: Add more languages
-const KNOWN_EXTENSIONS_BINDINGS: &[(&str, &[&str])] = &[
-    ("rs", &["//", "/*", "*/"]),
-    ("c", &["//", "/*", "*/"]),
-    ("cpp", &["//", "/*", "*/"]),
-    ("c++", &["//", "/*", "*/"]),
-    ("cxx", &["//", "/*", "*/"]),
-    ("py", &["#", "\"\"\"", "\"\"\""]),
-    ("js", &["//", "/*", "*/"]),
-    ("jsx", &["//", "/*", "*/"]),
-    ("ts", &["//", "/*", "*/"]),
-];
-
-/// Representation of a Line
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Line {
-    SingleComment,
-    OpenMultiComment,
-    CloseMultiComment,
-    Normal,
-}
-
-/// Given a `filepath` it will parse it and return the line count keeping in
-/// mind that can have comments. Its not perfect and it does not aim to be,
-/// just fast
-fn parse_file<P: AsRef<Path>>(filepath: P) -> Option<usize> {
-    let ext = filepath.as_ref().extension()?;
-    if !KNOWN_EXTENSIONS_BINDINGS.iter().any(|x| x.0 == ext) {
-        return None;
-    }
-    let mut single_line_match = None;
-    let mut open_multiline_match = None;
-    let mut close_multiline_match = None;
-    for e in KNOWN_EXTENSIONS_BINDINGS {
-        if e.0 == ext {
-            single_line_match = Some(e.1[0]);
-            open_multiline_match = Some(e.1[1]);
-            close_multiline_match = Some(e.1[2]);
-        }
-    }
-    let single_line_match = single_line_match?;
-    let open_multiline_match = open_multiline_match?;
-    let close_multiline_match = close_multiline_match?;
-    // TODO: Better error reporting
-    // Read the file given the `filepath`
-    let file = match fs::read_to_string(filepath) {
-        Ok(f) => f,
-        Err(_) => return None,
-    };
-    let mut p_lines: Vec<Line> = Vec::with_capacity(file.len());
-    // Iterate the lines and push the type of each one
-    for l in file.lines() {
-        let l = l.trim();
-        if l.starts_with(single_line_match) {
-            p_lines.push(Line::SingleComment);
-        } else if l.starts_with(open_multiline_match) {
-            p_lines.push(Line::OpenMultiComment);
-        } else if l.contains(close_multiline_match) {
-            // To avoid line count loss
-            p_lines.push(Line::CloseMultiComment);
-        } else {
-            p_lines.push(Line::Normal);
-        }
-    }
-    // Count the Line::Normal except the ones between a multiline comment
-    let mut in_multi = false;
-    let mut line_count = 0;
-    for l in p_lines.iter() {
-        match l {
-            Line::OpenMultiComment => {
-                in_multi = true;
-            }
-            Line::CloseMultiComment => {
-                if in_multi {
-                    in_multi = false;
-                } else {
-                    // Case of a close comment fount but no open
-                    line_count += 1;
-                }
-            }
-            Line::SingleComment => {}
-            Line::Normal => {
-                if !in_multi {
-                    line_count += 1;
-                }
-            }
-        };
-    }
-    Some(line_count)
 }
 
 /// Function that given a `dir` fills the vec `filenames` with a recursive
@@ -124,26 +34,6 @@ fn get_files<P: AsRef<Path>>(
     dir: P,
     filenames: &mut Vec<PathBuf>,
 ) -> io::Result<()> {
-    /*
-    // Get the entries in dir
-    let entries = fs::read_dir(dir)?;
-
-    for entry in entries {
-        // If a entry is a file add it to the entries and if is not, recursive
-        // call to this func
-        let entry = entry?;
-        if entry.file_type()?.is_file() {
-            filenames.push(entry.path());
-        } else if entry.file_type()?.is_dir() {
-            get_files(entry.path(), filenames)?;
-        } else {
-            // TODO: Symlink encountered, don't know how to manage it
-        }
-    }
-    // Filter non extensioned files
-    filenames.retain(|f| f.extension().is_some());
-    Ok(())
-    */
     for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
         filenames.push(entry.path().to_path_buf());
     }
@@ -237,33 +127,52 @@ impl fmt::Debug for ProjectData {
 
         write!(
             f,
-            "PROJECT_NAME: {:<30}TOTAL_LINES: {}\n{}",
+            "COMPLETE! {:<30}TOTAL_LINES: {}\n{}",
             self.name, self.total_lines, percentages
         )
     }
 }
 
 fn main() {
-    // Get the dir from args
-    let path = &std::env::args().nth(1).expect("Usage: rlcount <path>");
-
-    // Get all the filenames from the path
+    let matches = App::new("Rust Line Counting")
+        .version("0.2.0")
+        .author("cdecompilador <nyagouno@gmail.com>")
+        .about("Just that, it counts lines nwn")
+        .arg(Arg::with_name("INPUT")
+            .help("The dir where to start looking for source code")
+            .required(true)
+            .index(1))
+        .get_matches();
     let mut filenames = Vec::new();
-    get_files(path, &mut filenames).expect("Error getting filenames");
+    get_files(matches.value_of("INPUT").unwrap(), &mut filenames)
+        .expect("Error getting filenames");
 
     // TODO: Create the project_data with the name of the folder
-    let mut project_data = ProjectData::new("...");
+    let mut project_data = ProjectData::new("");
 
     // Process each file in the project
-    for filename in filenames.iter() {
+    let a = filenames.par_iter()
+        .map(|filename| {
         let extension: &str = match filename.extension() {
-            Some(extension) => extension.to_str().unwrap(),
-            None => continue,
+            Some(extension) => {
+                let ext: &str = extension.to_str().unwrap();
+                if get_language_name(ext) == "Unknown" {
+                    return None;
+                } 
+                ext
+            },
+            None => {
+                return None;
+            }
         };
         if let Some(n) = parse_file(filename) {
-            project_data.push(extension, n);
+            Some((extension, n))
+        } else { None }
+    }).collect::<Vec<Option<(&str, usize)>>>().iter().for_each(|val| {
+        if let Some((extension, n)) = val {
+            project_data.push(extension, *n);
         }
-    }
+    });
 
     // Collapse the results and show them
     project_data.collapse();
