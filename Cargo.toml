@@ -1,6 +1,6 @@
 [package]
 name = "rlcount"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["ElGusanitoPLAY <nyagouno@gmail.com>"]
 edition = "2018"
 

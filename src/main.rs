@@ -1,11 +1,10 @@
 use std::fmt;
 use std::io;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use walkdir::WalkDir;
+use clap::{App, Arg};
 use rayon::prelude::*;
-use clap::{Arg, App};
+use walkdir::{DirEntry, WalkDir};
 
 mod parser;
 use parser::parse_file;
@@ -19,13 +18,30 @@ fn get_language_name<'a>(extension: &'a str) -> &'a str {
         "cpp" | "cxx" | "c++" => "C++",
         "py" => "Python",
         "js" | "jsx" | "ejs" => "Javascript",
-        "ts"  => "Typescript",
+        "ts" => "Typescript",
         "html" => "HTML", // Not yet
-        "css" => "css", // Not yet
+        "css" => "css",   // Not yet
         "java" => "Java",
         "go" => "Golang",
-        _ => "Unknown"
+        _ => "Unknown",
     }
+}
+
+/// Check if the dir is valid, if not do not look for files inside it, avoid
+/// special project dirs like `node_modules` that contain source but not from
+/// the especific project to analyse
+fn is_invalid(entry: &DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| {
+            (s.starts_with(".") && s != ".")
+                || s == "target"
+                || s == "node_modules"
+                || s == "build"
+                || s == "out"
+        })
+        .unwrap_or(false)
 }
 
 /// Function that given a `dir` fills the vec `filenames` with a recursive
@@ -35,8 +51,9 @@ fn get_files<P: AsRef<Path>>(
     dir: P,
     filenames: &mut Vec<PathBuf>,
 ) -> io::Result<()> {
-    for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-        filenames.push(entry.path().to_path_buf());
+    let walker = WalkDir::new(dir).into_iter();
+    for entry in walker.filter_entry(|e| !is_invalid(e)) {
+        filenames.push(entry?.path().to_path_buf());
     }
     Ok(())
 }
@@ -139,10 +156,12 @@ fn main() {
         .version("0.2.0")
         .author("cdecompilador <nyagouno@gmail.com>")
         .about("Just that, it counts lines nwn")
-        .arg(Arg::with_name("INPUT")
-            .help("The dir where to start looking for source code")
-            .required(true)
-            .index(1))
+        .arg(
+            Arg::with_name("INPUT")
+                .help("The dir where to start looking for source code")
+                .required(true)
+                .index(1),
+        )
         .get_matches();
     let mut filenames = Vec::new();
     get_files(matches.value_of("INPUT").unwrap(), &mut filenames)
@@ -151,31 +170,37 @@ fn main() {
     // TODO: Create the project_data with the name of the folder
     let mut project_data = ProjectData::new("");
 
-    // Process each file in the project, rayon is being used for the sake of 
+    // Process each file in the project, rayon is being used for the sake of
     // speed
-    filenames.par_iter()
+    filenames
+        .par_iter()
         .map(|filename| {
-        let extension: &str = match filename.extension() {
-            Some(extension) => {
-                let ext: &str = extension.to_str().unwrap();
-                // If not supported the extension do nothing with it
-                if get_language_name(ext) == "Unknown" {
+            let extension: &str = match filename.extension() {
+                Some(extension) => {
+                    let ext: &str = extension.to_str().unwrap();
+                    // If not supported the extension do nothing with it
+                    if get_language_name(ext) == "Unknown" {
+                        return None;
+                    }
+                    ext
+                }
+                None => {
                     return None;
-                } 
-                ext
-            },
-            None => {
-                return None;
+                }
+            };
+            if let Some(n) = parse_file(filename) {
+                Some((extension, n))
+            } else {
+                None
             }
-        };
-        if let Some(n) = parse_file(filename) {
-            Some((extension, n))
-        } else { None }
-    }).collect::<Vec<Option<(&str, usize)>>>().iter().for_each(|val| {
-        if let Some((extension, n)) = val {
-            project_data.push(extension, *n);
-        }
-    });
+        })
+        .collect::<Vec<Option<(&str, usize)>>>()
+        .iter()
+        .for_each(|val| {
+            if let Some((extension, n)) = val {
+                project_data.push(extension, *n);
+            }
+        });
 
     // Collapse the results and show them
     project_data.collapse();
