@@ -19,7 +19,11 @@ doc = false
 
 [dependencies]
 rayon = "1.5.0"
-clap = "2.33.3"
 walkdir = "2.3.1"
 regex = "1.4.5"
 lazy_static = "1.4.0"
+
+[dependencies.clap]
+version = "2.33.3"
+default-features = false
+features = ["suggestions", "color"]
