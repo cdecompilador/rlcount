@@ -1,3 +1,12 @@
+//! Parser module:
+//! This module parses the file using the `Linearizator` trait, first
+//! `linearizator()` matches the corresponding implementation of the
+//! `Lineatizator` trait, then that trait using regex gets the matches for
+//! comments, substracting that value with the actual lines of the source we 
+//! get the lines of code, also we skip the dir who are used to contain 
+//! external dependencies source code, or intermediate precompiled code,
+//! ex: "node_modules" (js), "target" (rust), "out" (typescript, wasm, etc...)
+
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -5,24 +14,17 @@ use std::path::Path;
 use lazy_static::{__Deref, lazy_static};
 use regex::Regex;
 
-/* MODULE EXPLANATION:
- * This module parses the file using the `Linearizator` trait, first
- * `linearizator()` matches the corresponding implementation of the
- * `Lineatizator` trait, then that trait using regex gets the matches for
- * comments, substracting that value with the actual lines of the source we get
- * the lines of code, also we skip the dir who are used to contain external
- * dependencies source code, or intermediate precompiled code,
- * ex: "node_modules" (js), "target" (rust), "out" (typescript, wasm, etc...)
- */
-
 /// Given an extension it returns the corresponding `Lineatizator` that will
 /// parse the file
 fn linearizator(extension: &str) -> Option<Box<dyn Linearizator>> {
+    // Match the extension and return the desired Linearizator
     match extension {
-        "rs" | "c" | "cpp" | "cxx" | "js" | "ts" | "jsx" | "ejs" | "java"
-        | "go" => Some(Box::new(DefaultLinearizator {})),
-        "py" | "pyc" => Some(Box::new(PythonLinearizator {})),
-        _ => None,
+        "rs" | "c" | "cpp" | "cxx" | "js" 
+        | "ts" | "jsx" | "ejs" | "java" | "go"
+                            => Some(Box::new(DefaultLinearizator {})),
+        "py" | "pyc" | "pyx"
+                            => Some(Box::new(PythonLinearizator {})),
+        _                   => None,
     }
 }
 
@@ -30,6 +32,9 @@ fn linearizator(extension: &str) -> Option<Box<dyn Linearizator>> {
 /// (needed better name I know). It counts the lines of a file following this
 /// rule: `lines` = `total_lines` - `lines_commented`
 trait Linearizator {
+    /// This trait method is shared among all the Linearizators and counts the
+    /// number of lines of code making use of the `get_comments` which is 
+    /// implementation especific
     fn count_lines(&self, input: String) -> usize {
         // Substracts the total lines of code inside the file and the lines of
         // all the comments
@@ -84,8 +89,10 @@ fn lines_of_code(input: String, extension: &str) -> usize {
 /// mind that can have comments. Its not perfect and it does not aim to be,
 /// just fast
 pub fn parse_file(filepath: impl AsRef<Path>) -> Option<usize> {
+    // Transforms the filepath arg to `Path`
     let filepath = filepath.as_ref();
-    // read the contents of the file
+
+    // read the contents of the file and process it
     let mut file_content: String = String::new();
     if let Ok(mut file) = File::open(filepath) {
         // if there are contents on the file it gets the lines of code
@@ -101,7 +108,7 @@ pub fn parse_file(filepath: impl AsRef<Path>) -> Option<usize> {
     None
 }
 
-// Simple tests for each `Linearizator` implementation
+/// Simple tests for each `Linearizator` implementation
 #[cfg(test)]
 mod parser {
     use super::*;
